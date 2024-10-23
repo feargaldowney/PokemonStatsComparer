@@ -1,0 +1,209 @@
+<!-- Feargal Downey -->
+<!-- Interactive Data Visualisation -->
+<!-- R00202629 -->
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pokemon Stats Visualization</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body>
+    <div id="content">
+        <h1>Pokemon Stats Comparer</h1>
+        <p class="header-instruction">Select the 6 best Pokemon for your adventure!</p>
+        <div id="teamSelection">
+            <button id="addPokemon">Add Pokemon</button>
+            <button id="clearTeam">Clear Team</button>
+
+        </div>
+        <select id="pokemonDropdown" style="display: none;"></select>
+        <div id="chartContainer">
+            <svg id="chart" width="800" height="400"></svg>
+            <svg id="team" width="250" height="400"></svg>
+            <svg id="types" width="250" height="400"></svg>
+        </div>
+        <div class="tooltip" style="opacity: 0;"></div>
+    </div>
+
+    <script>
+        const svg = d3.select("svg#chart");
+        const margin = { top: 20, right: 20, bottom: 30, left: 40 };
+        const width = +svg.attr("width") - margin.left - margin.right;
+        const height = +svg.attr("height") - margin.top - margin.bottom;
+        const x = d3.scaleBand().rangeRound([0, width]).padding(0.1);
+        const y = d3.scaleLinear().rangeRound([height, 0]);
+        const g = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+        const colors = d3.scaleOrdinal(d3.schemeSet1);
+        let pokemonData = [];
+        let selectedPokemons = [];
+    
+        // Load Pokemon data
+        d3.csv("Pokemon.csv").then(function(data) {
+            pokemonData = data;
+            d3.select("#addPokemon").on("click", function() {
+                updateDropdown();
+            });
+            d3.select("#clearTeam").on("click", function() {
+                clearTeam();
+            });
+        });
+    
+        function updateDropdown() {
+            const dropdown = d3.select("#pokemonDropdown");
+            dropdown.style("display", null);
+            dropdown.selectAll("option")
+                .data(pokemonData, d => d.Name)
+                .enter().append("option")
+                .text(d => d.Name);
+    
+            dropdown.on("change", function(event) {
+                const selectedName = dropdown.node().value;
+                const selectedPokemon = pokemonData.find(d => d.Name === selectedName);
+                if (selectedPokemons.length < 6) {
+                    selectedPokemons.push(selectedPokemon);
+                    updateChart();
+                    updateTeam();
+                } else {
+                    alert("You can only select up to 6 Pokemon for your team.");
+                }
+            });
+        }
+    
+        function clearTeam() {
+            selectedPokemons = [];
+            updateChart();
+            updateTeam();
+        }
+    
+        function updateChart() {
+            const stats = ['HP', 'Attack', 'Defense', 'Sp. Atk', 'Sp. Def', 'Speed'];
+            const dataset = selectedPokemons.flatMap((d, i) =>
+                stats.map(stat => ({
+                    name: d.Name,
+                    type1: d['Type 1'], 
+                    type2: d['Type 2'], 
+                    stat: stat,
+                    value: +d[stat],
+                    index: i
+                }))
+            );
+    
+            const uniqueStats = stats.map(stat => selectedPokemons.map(pokemon => ({
+                name: stat,
+                index: pokemon.Name
+            }))).flat();
+            x.domain(uniqueStats.map(d => d.name));
+    
+            y.domain([0, d3.max(dataset, d => d.value)]);
+    
+            // Calculate the width for each bar based on the number of selected pokemons
+            const barWidth = x.bandwidth() / selectedPokemons.length;
+    
+            g.selectAll(".bar").remove();
+            g.selectAll(".bar")
+                .data(dataset)
+                .enter().append("rect")
+                .attr("class", "bar")
+                .attr("x", d => x(d.stat) + (barWidth * d.index))
+                .attr("y", d => y(d.value))
+                .attr("width", barWidth)
+                .attr("height", d => height - y(d.value))
+                .attr("fill", d => colors(d.index))
+                .on("mouseover", function(event, d) {
+                    d3.select(".tooltip")
+                        .style("opacity", .9)
+                        .html(`${d.name}<br/>Type 1: ${d.type1}<br/>Type 2: ${d.type2}<br/>${d.stat}: ${d.value}`)
+                        .style("left", (event.pageX) + "px")
+                        .style("top", (event.pageY - 28) + "px");
+                })
+                .on("mouseout", function(d) {
+                    d3.select(".tooltip").style("opacity", 0);
+                });
+    
+            g.selectAll(".axis").remove();
+            g.append("g")
+                .attr("class", "axis")
+                .attr("transform", "translate(0," + height + ")")
+                .call(d3.axisBottom(x));
+    
+            g.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(y));
+    
+            updateTeam();
+        }
+    
+        function updateTeam() {
+            const teamSvg = d3.select("#team");
+            const teamMargin = {top: 10, right: 10, bottom: 10, left: 10};
+            const teamWidth = +teamSvg.attr("width") - teamMargin.left - teamMargin.right;
+            const teamHeight = 250;
+
+            teamSvg.selectAll("*").remove();
+            teamSvg.append("text")
+                .attr("x", teamWidth / 2)
+                .attr("y", teamMargin.top)
+                .attr("text-anchor", "middle")
+                .style("font-size", "16px")
+                .style("fill", "white")
+                .text("Team:");
+
+            teamSvg.append("rect")
+                .attr("x", 0)
+                .attr("y", 0)
+                .attr("width", teamWidth)
+                .attr("height", teamHeight)
+                .style("fill", "none")
+                .style("stroke", "white")
+                .style("stroke-width", 2);
+
+            const legend = teamSvg.selectAll(".legend")
+                .data(selectedPokemons, d => d.Name)
+                .join("g")
+                .attr("class", "legend")
+                .attr("transform", (d, i) => "translate(20," + (i * 30 + 40) + ")");
+
+            legend.append("rect")
+                .attr("x", 0)
+                .attr("width", 18)
+                .attr("height", 18)
+                .attr("fill", (d, i) => colors(i));
+
+            legend.append("text")
+                .attr("x", 24)
+                .attr("y", 9)
+                .attr("dy", ".35em")
+                .style("fill", "white")
+                .text(d => d.Name);
+
+            // Calculate and display total stats as one number
+            const totalPartyStat = selectedPokemons.reduce((total, pokemon) => total + +pokemon.Total, 0);
+            teamSvg.append("text")
+                .attr("x", 10)
+                .attr("y", teamHeight - 20)
+                .style("font-size", "16px")
+                .style("fill", "white")
+                .text(`Total Party Stats: ${totalPartyStat}`);
+
+            // Remove button for each Pokémon
+            legend.append("text")
+                .attr("x", 140)  // Set an appropriate x position for the remove button
+                .attr("y", 9)
+                .attr("dy", ".35em")
+                .style("fill", "red")
+                .text("Remove") 
+                .style("cursor", "pointer")
+                .on("click", function(event, d) {
+                    selectedPokemons = selectedPokemons.filter(p => p.Name !== d.Name);  // Remove the clicked Pokémon from the array
+                    updateChart();
+                    updateTeam();
+                });
+        }
+
+    </script>
+    
+</body>
+</html>
